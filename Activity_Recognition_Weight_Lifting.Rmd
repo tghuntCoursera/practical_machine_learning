@@ -1,22 +1,181 @@
 ---
-title: "Activity_Recognition_Weight_Lifting"
+title: "Qualitative Activity Recognition of Weight Lifting Exercises"
 author: "Thomas Hunt"
 date: "January 23, 2016"
-output: html_document
+output: 
+  html_document: 
+    self_contained: no
 ---
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r, eval=TRUE, echo=FALSE}
+set.seed(12345)
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+library(data.table, quietly=TRUE, warn.conflicts=FALSE,verbose=FALSE)
+library(caret, quietly=TRUE, warn.conflicts=FALSE,verbose=FALSE)
+library(randomForest, quietly=TRUE, warn.conflicts=FALSE,verbose=FALSE)
+library(parallel, quietly=TRUE, warn.conflicts=FALSE,verbose=FALSE)
+library(doParallel, quietly=TRUE, warn.conflicts=FALSE,verbose=FALSE)
+library(gridExtra, quietly=TRUE, warn.conflicts=FALSE,verbose=FALSE)
 
-```{r}
-summary(cars)
+fontSize = 8
+tt1 <- ttheme_default()
+tt1$core$fg_params$fontsize=fontSize
+tt1$rowhead$fg_params$fontsize=fontSize
+tt1$colhead$fg_params$fontsize=fontSize
+
+training <- data.table(read.csv("pml-training.csv"))
+
+# set classe as a factor
+training$classe <- as.factor(training$classe)
+
+testing <- data.table(read.csv("pml-testing.csv"))
+
+training_smaller <- training[,which( !grepl("X|num_window|min_|max_|avg_|var_|stddev_|kurtosis_|skewness_|amplitude_|new_window|user_name|timestamp",colnames(training) ) ), with=FALSE ]
+
+testing_smaller <- testing[,which( !grepl("X|num_window|min_|max_|avg_|var_|stddev_|kurtosis_|skewness_|amplitude_|new_window|user_name|timestamp",colnames(testing) ) ), with=FALSE ]
+
+cluster <- makeCluster(detectCores() - 2) # convention to leave 1 core for OS
+#cluster <- 7
+registerDoParallel(cluster)
+nmLen <- length(names(training_smaller)) - 2
+
+if (file.exists("modFit1.RData")) {
+  #print("loading existing")
+  load("modFit1.RData")
+} else {
+  print("Please run the exploratory.R script prior to kniting this")
+  #print("Creating model")
+  #modFit1 <- train(classe~., method="rf", data = training_smaller, trControl = fitControl)
+  #save(modFit1, file="modFit1.RData")
+}
+
+if (file.exists("modFit2.RData")) {
+  #print("loading existing")
+  load("modFit2.RData")
+} else {
+  print("Please run the exploratory.R script prior to kniting this")
+  #print("Creating model")
+  modFit2 <- train(classe~., method="rf", data = training_smaller, preProcess=c("center"), trControl = fitControl)
+  save(modFit2, file="modFit2.RData")
+}
+
+if (file.exists("modFit3.RData")) {
+  #print("loading existing")
+  load("modFit3.RData")
+} else {
+  print("Please run the exploratory.R script prior to kniting this")
+  #print("Creating model")
+  #modFit3 <- train(classe~., method="rf", data = training_smaller, preProcess=c("center", "scale"), trControl = fitControl)
+  #save(modFit3, file="modFit3.RData")
+}
+
+stopCluster(cluster)
+
+predTrain1 <- predict(modFit1, training_smaller)
+predTrain2 <- predict(modFit2, training_smaller)
+predTrain3 <- predict(modFit3, training_smaller)
+
+pred1 <- data.frame(predTrain1, classe=training_smaller$classe, agree=predTrain1 == training_smaller$classe)
+
+pred2 <- data.frame(predTrain2, classe=training_smaller$classe, agree=predTrain2 == training_smaller$classe)
+
+pred3 <- data.frame(predTrain3, classe=training_smaller$classe, agree=predTrain3 == training_smaller$classe)
+
+cm1 <- confusionMatrix(predTrain1, training_smaller$classe)
+cm2 <- confusionMatrix(predTrain2, training_smaller$classe)
+cm3 <- confusionMatrix(predTrain3, training_smaller$classe)
+
+predTest1 <- predict(modFit1, testing_smaller)
+predTest2 <- predict(modFit2, testing_smaller)
+predTest3 <- predict(modFit3, testing_smaller)
+
+missClass = function(values, pred1) {
+  sum(pred1 != values)/length(values)
+}
+errRate1 = missClass(training_smaller$classe, predTrain1)
+errRate2 = missClass(training_smaller$classe, predTrain2)
+errRate3 = missClass(training_smaller$classe, predTrain3)
+
 ```
 
-You can also embed plots, for example:
+##Synopsis
 
-```{r, echo=FALSE}
-plot(cars)
+This purpose of this paper is to analyse data gathered from a study that measured various aspects of "Unilateral Dumbbell Biceps Curls"" on six male participants between 20-28 years of age.  The following link can be used to access an overview of the [original study](http://groupware.les.inf.puc-rio.br/har) and the full study can be found here: [Qualitative Activity Recognition of Weight Lifting Exercises](http://groupware.les.inf.puc-rio.br/work.jsf?p1=11201)
+
+This report was created as a project requirement for the Practical Machine Learning course offered by Johns Hopkins University as part of the Data Science Specialization offered through Coarsera.
+
+This report will cover the following items:
+
++ Data exploration
++ How the model was built
++ How cross validation was used
++ What the expected out of sample error is
++ Why certain choices were made
+
+
+##Question
+Can the manner (correctness) in which Unilateral Dumbbell Biceps Curls was done be predicted using accelerometer data?  
+
+
+##Model Building activities
+
+### Input Data
+The datasets consist of accelerometer data on the belt, forearm and arm of six young healthy participants as well as the dumbell.
+
+The data can be downloaded here:
+
++ [Training set](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
++ [Testing set](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+ 
+### Features
+The first part of model building is data exploration.  There are 118 variables in the datasets and it was assumed that some or many of them would provide little or no use.  The standard summary() function in R was used to investigate them and it was found that vaiables which included "min_|max_|avg_|var_|stddev_|kurtosis_|skewness_|amplitude_" in the name had large numbers of NA's or empty cells. Additionally, these variables are summary statistics created by the original authors and were considered to be problematic for any model so they were removed.  The variables "new_window|user_name|timestamp|X" were also removed because they would not provide any usefulness in answering the stated question.
+
+The following R commands were used to prune the undesirable variables from the original datasets.  To verify if the remaining variables had any additional issues the resulting training set was investigated again with the summary() function and the nearZeroVar() function.
+
+```{r, eval=FALSE}
+training_smaller <- training[,which( !grepl("X|num_window|min_|max_|avg_|var_|stddev_|kurtosis_|skewness_|amplitude_|new_window|user_name|timestamp",colnames(training) ) ), with=FALSE ]
+
+testing_smaller <- testing[,which( !grepl("X|num_window|min_|max_|avg_|var_|stddev_|kurtosis_|skewness_|amplitude_|new_window|user_name|timestamp",colnames(testing) ) ), with=FALSE ]
+
+# trained models
+modFit1 <- train(classe~., method="rf", data = training_smaller, trControl = fitControl)
+
+# with preProcess - center
+modFit2 <- train(classe~., method="rf", data = training_smaller, preProcess=c("center"), trControl = fitControl)
+
+# with preProcess - center and scale
+modFit3 <- train(classe~., method="rf", data = training_smaller, preProcess=c("center", "scale"), trControl = fitControl)
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+### Algorithm
+In the snippet above you can see the code for the three models (modFit{1|2|3}) that were trained for evaluation.  It was decide to start with the random forest model using the entire training dataset to see what the outcome would be.  Along with the base random forest model an additional two models were created that use the preProcess methods of "center" and  "center with scale".
+
+
+### Evaluation
+Evaluation of the random forests models were done against the training set to see how well the models perform in predicting the classification.  As can be seen in the following output, the tables from the confusionMatrix for each model show that the base model and two subsequent version matched the training set exactly.
+
+```{r, eval=TRUE, echo=FALSE, fig.width=7, fig.height=1.75}
+coef1.tg <- tableGrob(cm1$table, theme=tt1)
+coef2.tg <- tableGrob(cm2$table, theme=tt1)
+coef3.tg <- tableGrob(cm3$table, theme=tt1)
+grid.arrange(coef1.tg,coef2.tg,coef3.tg, nrow=1)
+
+```
+
+
+The final test was to run the predict function using the base model and the test data.  The results from this were entered into the course project prediction quiz for validation.  The random forest proved to be an ideal model for this data as it categorized the classifications with 100% accurancy.
+
+With the results of the training data and testing data it is considered that the expected out of sample error is near zero.
+
+## Choices
+The decision to remove the analyst created variables was done to remove sparse data with the hopes that the remaining data would yield good results.  However, it was suprising that the model worked as well as it did.  
+
+The decision to remove the other variables "new_window|user_name|timestamp|X" was made because it was expected that they would not provide useful information in the model building process.  Additionaly, they were not directly tied to the question being asked of the data.
+
+The choice to start with the random Forest model was made because the dataset was not to large to run in a decent amount of time with the addition of parallel processing functions.
+
+

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+<meta name="author" content="Thomas Hunt" />
+
+<meta name="date" content="2016-01-23" />
+
+<title>Qualitative Activity Recognition of Weight Lifting Exercises</title>
+
+<script src="Activity_Recognition_Weight_Lifting_files/jquery-1.11.0/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="Activity_Recognition_Weight_Lifting_files/bootstrap-3.3.1/css/bootstrap.min.css" rel="stylesheet" />
+<script src="Activity_Recognition_Weight_Lifting_files/bootstrap-3.3.1/js/bootstrap.min.js"></script>
+<script src="Activity_Recognition_Weight_Lifting_files/bootstrap-3.3.1/shim/html5shiv.min.js"></script>
+<script src="Activity_Recognition_Weight_Lifting_files/bootstrap-3.3.1/shim/respond.min.js"></script>
+
+<style type="text/css">code{white-space: pre;}</style>
+<link rel="stylesheet"
+      href="Activity_Recognition_Weight_Lifting_files/highlight/default.css"
+      type="text/css" />
+<script src="Activity_Recognition_Weight_Lifting_files/highlight/highlight.js"></script>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs && document.readyState && document.readyState === "complete") {
+   window.setTimeout(function() {
+      hljs.initHighlighting();
+   }, 0);
+}
+</script>
+
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img { 
+  max-width:100%; 
+  height: auto; 
+}
+</style>
+<div class="container-fluid main-container">
+
+
+<div id="header">
+<h1 class="title">Qualitative Activity Recognition of Weight Lifting Exercises</h1>
+<h4 class="author"><em>Thomas Hunt</em></h4>
+<h4 class="date"><em>January 23, 2016</em></h4>
+</div>
+
+<div id="synopsis" class="section level2">
+<h2>Synopsis</h2>
+<p>This purpose of this paper is to analyse data gathered from a study that measured various aspects of “Unilateral Dumbbell Biceps Curls”&quot; on six male participants between 20-28 years of age. The following link can be used to access an overview of the <a href="http://groupware.les.inf.puc-rio.br/har">original study</a> and the full study can be found here: <a href="http://groupware.les.inf.puc-rio.br/work.jsf?p1=11201">Qualitative Activity Recognition of Weight Lifting Exercises</a></p>
+<p>This report was created as a project requirement for the Practical Machine Learning course offered by Johns Hopkins University as part of the Data Science Specialization offered through Coarsera.</p>
+<p>This report will cover the following items:</p>
+<ul>
+<li>Data exploration</li>
+<li>How the model was built</li>
+<li>How cross validation was used</li>
+<li>What the expected out of sample error is</li>
+<li>Why certain choices were made</li>
+</ul>
+</div>
+<div id="question" class="section level2">
+<h2>Question</h2>
+<p>Can the manner (correctness) in which Unilateral Dumbbell Biceps Curls was done be predicted using accelerometer data?</p>
+</div>
+<div id="model-building-activities" class="section level2">
+<h2>Model Building activities</h2>
+<div id="input-data" class="section level3">
+<h3>Input Data</h3>
+<p>The datasets consist of accelerometer data on the belt, forearm and arm of six young healthy participants as well as the dumbell.</p>
+<p>The data can be downloaded here:</p>
+<ul>
+<li><a href="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv">Training set</a></li>
+<li><a href="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv">Testing set</a></li>
+</ul>
+</div>
+<div id="features" class="section level3">
+<h3>Features</h3>
+<p>The first part of model building is data exploration. There are 118 variables in the datasets and it was assumed that some or many of them would provide little or no use. The standard summary() function in R was used to investigate them and it was found that vaiables which included “min_|max_|avg_|var_|stddev_|kurtosis_|skewness_|amplitude_” in the name had large numbers of NA’s or empty cells. Additionally, these variables are summary statistics created by the original authors and were considered to be problematic for any model so they were removed. The variables “new_window|user_name|timestamp|X” were also removed because they would not provide any usefulness in answering the stated question.</p>
+<p>The following R commands were used to prune the undesirable variables from the original datasets. To verify if the remaining variables had any additional issues the resulting training set was investigated again with the summary() function and the nearZeroVar() function.</p>
+<pre class="r"><code>training_smaller &lt;- training[,which( !grepl(&quot;X|num_window|min_|max_|avg_|var_|stddev_|kurtosis_|skewness_|amplitude_|new_window|user_name|timestamp&quot;,colnames(training) ) ), with=FALSE ]
+
+testing_smaller &lt;- testing[,which( !grepl(&quot;X|num_window|min_|max_|avg_|var_|stddev_|kurtosis_|skewness_|amplitude_|new_window|user_name|timestamp&quot;,colnames(testing) ) ), with=FALSE ]
+
+# trained models
+modFit1 &lt;- train(classe~., method=&quot;rf&quot;, data = training_smaller, trControl = fitControl)
+
+# with preProcess - center
+modFit2 &lt;- train(classe~., method=&quot;rf&quot;, data = training_smaller, preProcess=c(&quot;center&quot;), trControl = fitControl)
+
+# with preProcess - center and scale
+modFit3 &lt;- train(classe~., method=&quot;rf&quot;, data = training_smaller, preProcess=c(&quot;center&quot;, &quot;scale&quot;), trControl = fitControl)</code></pre>
+</div>
+<div id="algorithm" class="section level3">
+<h3>Algorithm</h3>
+<p>In the snippet above you can see the code for the three models (modFit{1|2|3}) that were trained for evaluation. It was decide to start with the random forest model using the entire training dataset to see what the outcome would be. Along with the base random forest model an additional two models were created that use the preProcess methods of “center” and “center with scale”.</p>
+</div>
+<div id="evaluation" class="section level3">
+<h3>Evaluation</h3>
+<p>Evaluation of the random forests models were done against the training set to see how well the models perform in predicting the classification. As can be seen in the following output, the tables from the confusionMatrix for each model show that the base model and two subsequent version matched the training set exactly.</p>
+<p><img src="Activity_Recognition_Weight_Lifting_files/figure-html/unnamed-chunk-3-1.png" title="" alt="" width="672" /></p>
+<p>The final test was to run the predict function using the base model and the test data. The results from this were entered into the course project prediction quiz for validation. The random forest proved to be an ideal model for this data as it categorized the classifications with 100% accurancy.</p>
+<p>With the results of the training data and testing data it is considered that the expected out of sample error is near zero.</p>
+</div>
+</div>
+<div id="choices" class="section level2">
+<h2>Choices</h2>
+<p>The decision to remove the analyst created variables was done to remove sparse data with the hopes that the remaining data would yield good results. However, it was suprising that the model worked as well as it did.</p>
+<p>The decision to remove the other variables “new_window|user_name|timestamp|X” was made because it was expected that they would not provide useful information in the model building process. Additionaly, they were not directly tied to the question being asked of the data.</p>
+<p>The choice to start with the random Forest model was made because the dataset was not to large to run in a decent amount of time with the addition of parallel processing functions.</p>
+</div>
+
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+$(document).ready(function () {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+});
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
