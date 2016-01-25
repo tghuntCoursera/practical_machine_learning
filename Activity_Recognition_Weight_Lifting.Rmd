@@ -34,6 +34,10 @@ training_smaller <- training[,which( !grepl("X|num_window|min_|max_|avg_|var_|st
 
 testing_smaller <- testing[,which( !grepl("X|num_window|min_|max_|avg_|var_|stddev_|kurtosis_|skewness_|amplitude_|new_window|user_name|timestamp",colnames(testing) ) ), with=FALSE ]
 
+train_sample <- training_smaller[!rcs_adelmo,]
+test_sample <- training_smaller[!rcs_adelmo,]
+
+
 cluster <- makeCluster(detectCores() - 2) # convention to leave 1 core for OS
 #cluster <- 7
 registerDoParallel(cluster)
